@@ -1,15 +1,6 @@
-import os, sys
-import shutil
+import os, sys, shutil
 import re # ew
-import textwrap
 import time, datetime
-
-# seperate install needed
-import requests # for requesting downloading files, need to install seperately, and is slows the script down the most
-import argparse
-
-import io
-
 import urllib3
 urllib3.disable_warnings()
 http = urllib3.PoolManager()
@@ -17,93 +8,49 @@ http = urllib3.PoolManager()
 # This is script is meant to be used with an html file exported from: https://github.com/Tyrrrz/DiscordChatExporter/releases
 # it may work with other html files though, never tested
 
+# maybe re-add the download queue and store it in a txt file or something, and continue from there if it finds that txt file?
+
+# hopefully this has enough comments to make it explainable and is clean enough, seems i did a decent job at it
+
+# this will end up downloading the same image multiple times sometimes, only because it was uploaded multiple times, so it will have a different URL
+# im thinking of adding a way to check the image if it's the same, but im worried that would be REALLY slow.
+
 if os.name == 'nt':
-    import msvcrt
     import ctypes
     # rename the window (windows only)
     ctypes.windll.kernel32.SetConsoleTitleW("Demez Awful HTML File Archiver - Setting Up")
 
-    # change the window size (windows only i think, never tried on posix)
-    #os.system( 'mode con: cols=' + str( 140 ) + ' lines=' + str( 15 ) )
-    os.system( 'mode con: cols=140 lines=1500' )
+    # change the window size
+    os.system( 'mode con: cols=140 lines=100' )
     
-    # hide the cursor
-    class _CursorInfo(ctypes.Structure):
-        _fields_ = [("size", ctypes.c_int),
-                    ("visible", ctypes.c_byte)]
+    # hide the cursor (should i remove this?)
+    class _CursorInfo( ctypes.Structure ):
+        _fields_ = [ ( "size", ctypes.c_int ),
+                    ( "visible", ctypes.c_byte ) ]
         
     ci = _CursorInfo()
-    handle = ctypes.windll.kernel32.GetStdHandle(-11)
-    ctypes.windll.kernel32.GetConsoleCursorInfo(handle, ctypes.byref(ci))
+    handle = ctypes.windll.kernel32.GetStdHandle( -11 )
+    ctypes.windll.kernel32.GetConsoleCursorInfo( handle, ctypes.byref( ci ) )
     ci.visible = False
-    ctypes.windll.kernel32.SetConsoleCursorInfo(handle, ctypes.byref(ci))
+    ctypes.windll.kernel32.SetConsoleCursorInfo( handle, ctypes.byref( ci ) )
     
 elif os.name == 'posix':
     # hide the cursor
-    sys.stdout.write("\033[?25l")
+    sys.stdout.write( "\033[?25l" )
     sys.stdout.flush()
-    
-max_width = 140
 
-def PrintBreak( line, break_length ):
-    # get number of characters in line
-    line_length = len( str( line ) ) + 4
-
-    global max_width
-
-    if ( line_length > max_width ) and ( break_length != 0 ):
-        # split the line by the length of the window, and then add the split length onto the text after it
-        
-        new_line = [ "", "" ]
-        char_counter = 0
-        line_char_list = []
-        for character in line:
-            char_counter += 1
-            #new_line[0] = new_line[0] + character
-            line_char_list.append( character )
-
-            if len( line_char_list ) < max_width - 8:
-                new_line[0] = new_line[0] + character
-            else:
-                new_line[1] = new_line[1] + character
-
-        del line_char_list
-
-            #new_line[0].append( " " )
-
-        # convert break_length into multiple spaces
-        space_length = []
-        count = 0
-        while ( count < break_length ):
-            count += 1
-            space_length.append( " " )
-
-        new_line[1] = ''.join( space_length ) + new_line[1]
-        print( new_line[0] )
-        print( new_line[1] )
-
+def FindArgument( search, return_value ):
+    if search in sys.argv:
+        index = 0
+        for arg in sys.argv:
+            if search == sys.argv[ index ]:
+                if return_value:
+                    return sys.argv[ index + 1 ]
+                else:
+                    return True
+            index += 1
     else:
-        print( line )
-
-# C:\Users\Demez\AppData\Local\Programs\Python\Python37-32\python.exe -m pip install requests
-# python -m pip install requests
-#from shutil import copyfile
-
-parser = argparse.ArgumentParser(description='Creates an Offline version of an HTML file with all files downloaded')
-parser.add_argument('--input_file', type=str, help='the video file you want modified', nargs='+' )
-parser.add_argument('--output_file', type=str, default="", help="the output file.", nargs='+')
-parser.add_argument('--output_folder', type=str, default="", help="folder where everything will be saved in", nargs='+')
-
-args = parser.parse_args()
-
-try:
-    input_html = ' '.join( args.input_file )
-    output_html = ' '.join( args.output_file )
-    folder_root = ' '.join( args.output_folder )
-except:
-    print(  "Not all input arguments were defined. You need:\n"
-            "--input_file 'FILE' --output_file 'FILE' --output_folder 'FOLDER' " )
-    input()
+        return False
 
 def GetNumberOfLines( file ):
     total_num_lines = 0
@@ -111,7 +58,7 @@ def GetNumberOfLines( file ):
         print( "Getting Total Number of Lines in:   " + file )
         for line in f:
             total_num_lines += 1
-    print( "Finished:   " + str(total_num_lines) + " Lines." )
+    print( "Finished:   " + str( total_num_lines ) + " Lines." )
     return total_num_lines
 
 def CreatePath( folder ):
@@ -134,32 +81,13 @@ def DeletePath( folder ):
                     file_path = os.path.join( folder, file )
                     try:
                         for reserved in discord_folders:
-                            if ( os.path.isfile(file_path) ) and not ( file_path.endswith( reserved ) ):
+                            if ( os.path.isfile( file_path ) ) and not ( file_path.endswith( reserved ) ):
                                 os.unlink( file_path )
                         #elif os.path.isdir(file_path): shutil.rmtree(file_path)
                     except Exception as e:
                         print(e)
 
-# list of common names for files, just catch these so it doesn't check through like 10,000 files of the same name for these
-duplicate_list = [ "magik.png", "unknown.png", "maxresdefault.jpg", "maxresdefault.png", "hqdefault.jpg", "header.jpg"  ]
-duplicate_list_counter = [ 0, 0, 0, 0, 0, 0 ]
-
-# not including attachments, since those can be different
-# this is only for files we know will be the same
-discord_folders = [ "avatars", "emojis", "emojis_default", "icons", "embed" ]
-
-# this will have a LOT of extensions in this tuple
-valid_file_ext = ( "png", "jpg", "gif" )
-
-# this might be faster
-ext_split_chars = [ "?", "&" ]
-
-DeletePath( folder_root + "/" )
-DeletePath( folder_root + "/attachments/" )
-CreatePath( folder_root + "/" )
-
 # ew
-# write is slow here somehow?
 def FindURLContainer( line ):
     try:
         line_split = line.split( "src=" )[1]
@@ -171,8 +99,6 @@ def FindURLContainer( line ):
         except:
             return False
 
-found_urls = []
-
 def GetURL( line, type ):    
     line_split = line.split( type + '=')
 
@@ -181,7 +107,9 @@ def GetURL( line, type ):
     elif type == "href":
         line_split = line_split[1].split('>')
     else:
+        # i currently have never got this YET, watch, ill get this somehow, like on a non-discord archived html file (what?)
         print("what the fuck how did you get this")
+        input()
     
     # remove the quotes wrapped around the url
     url = line_split[0].split('"')
@@ -196,7 +124,8 @@ def CheckForDuplicateURL( url ):
         return False
 
 # ok i am calling this too many times lmao
-# works only on discord images
+# checks for specific discord files
+# and returns the folder root if it's not found
 # maybe add a common files folder?
 def GetFolderPath( url ):    
     try:
@@ -215,9 +144,10 @@ def GetFolderPath( url ):
         except:
             return folder_root + "/"
 
-
-# would be nice if we also returned a folder for the file to be in
-# but i don't feel like adding that in atm
+# now THIS, is an abomination
+# this can end up just mashing a complex url into one name
+# ex: watchvYnJ1fyMPbzMfeatureyoutu.be
+# i don't know what i can add here to prevent against that though
 def GetFileName( url, type, folder, duplicate_url ):
     filename = url.rsplit('/', 1)
     filename = filename[1].rsplit('"')[0]
@@ -249,9 +179,7 @@ def GetFileName( url, type, folder, duplicate_url ):
     except:
         return None
 
-# the old method, much faster, but you need to manually add names to the list
-# bug with this, will create name (0).png on the first one everytime if href was used before
-# not that big of a deal, but a bit annoying
+# just a faster check so we don't potentially end up searching through 10,000 images that are all the same name
 def CheckForCommonFileName( filename, type ):
     if filename in duplicate_list:
         for entry in duplicate_list:
@@ -269,6 +197,8 @@ def CheckForCommonFileName( filename, type ):
 
 # 2nd slowest function, only because of os.path.isfile
 # plus you need to delete all files in the folder before running the script if you use this anyway
+# i could try using a dictionary for a download queue again, and store it in a txt file, idk
+# though then i would need to create in a reader for that file, ugh
 # it at least searches by extension, so thats better
 def SearchForDuplicateFileName( folder, filename, type, dup_url ):
     
@@ -289,6 +219,10 @@ def SearchForDuplicateFileName( folder, filename, type, dup_url ):
             return commonFilename
         else:
             del commonFilename
+
+        # below i don't really understand much of what i did 
+        # i did try to counter that with more comments, but it can only help so much
+        # at least it works lol
 
         # src only, since the file may of been given a number in href right before it
         if type == "src":
@@ -332,7 +266,7 @@ def SearchForDuplicateFileName( folder, filename, type, dup_url ):
                 # just return the filename as-is since no numbered one exists
                 return filename 
 
-        # try seeing if an auto renamed version of that file already exists by making a while loop that
+        # try seeing if an auto renamed version of that file already exists through a while loop that
         # adds a number in parentheses to filename, checks if that exists, if it does, keep going
         # otherwise, use that name
         count = 0
@@ -345,7 +279,8 @@ def SearchForDuplicateFileName( folder, filename, type, dup_url ):
     else:
         return filename
     
-# this is insanely slow
+# the http request is THE slowest, along with reading it
+# 2nd slowest is copyfileobj
 def DownloadFile( url, folder, filename, logfile ):
     # check if the file exists already, this module can be really slow
 
@@ -387,17 +322,20 @@ def DownloadFile( url, folder, filename, logfile ):
 
 def WriteErrorMessage( error, url, logfile ):
     error_message = ( "\n-------------------------------------------------------------------------------------------------------------\n" +
-                    "Download Failed:\n" +
+                    "Download Failed\n" +
                     "URL: " + url + "\n" + 
                     str( error ) +
                     "\n-------------------------------------------------------------------------------------------------------------\n" )
 
     print( error_message )
-    logfile.write( error_message )
+    logfile.write( error_message + "\n" )
 
 def ReplaceDateModified( input_date, file_to_update ):
 
+    # 
     date_modified_utime = time.mktime( ConvertDateIntoDateTime( input_date ).timetuple() )
+
+    # change the date modified of the file to the "new" one
     os.utime( file_to_update, ( date_modified_utime, date_modified_utime ) )
 
 def ConvertDateIntoDateTime( input_date ):
@@ -416,7 +354,7 @@ def ConvertDateIntoDateTime( input_date ):
     sec = int( time_split[2] )
     month = int( datetime.datetime.strptime( date_split[2], '%b' ).month ) # convert from "Feb" to "2"
     
-    # now throw it into datetime
+    # now throw it into datetime and return it
     return datetime.datetime( year, month, day, hour = hour, minute = min, second = sec )
 
 def ReplaceFileDirectory( line, url, filepath ):
@@ -430,6 +368,45 @@ def ReplaceFileDirectory( line, url, filepath ):
     # now join the new line together and return it
     return ''.join(line_split)
     
+# ------------------------------------------------------------------------------------------
+# Starting Point
+
+input_html = FindArgument( "--input_file", True )
+output_html = FindArgument( "--output_file", True )
+folder_root = FindArgument( "--output_folder", True )
+
+if input_html == None:
+    print(  "You need to add the input html file:\n"
+            "--input_file \"FILE\"" )
+    quit()
+
+if output_html == None:
+    # change this a bit, since what if we used a file that's not in the current directory?
+    output_html = "Offline - " + input_html
+
+if folder_root == None:
+    folder_root = input_html.split( ".html" )[0] + " files"
+
+# list of common names for files, just catch these so it doesn't check through like 10,000 files of the same name for these
+duplicate_list = [ "magik.png", "unknown.png", "maxresdefault.jpg", "maxresdefault.png", "hqdefault.jpg", "header.jpg"  ]
+duplicate_list_counter = [ 0, 0, 0, 0, 0, 0 ]
+
+# not including attachments, since those can be different
+# this is only for files we know will be the same
+discord_folders = [ "avatars", "emojis", "emojis_default", "icons", "embed" ]
+
+# this will have a LOT of extensions in this tuple
+valid_file_ext = ( "png", "jpg", "gif" )
+
+# this might be faster
+ext_split_chars = [ "?", "&" ]
+
+found_urls = []
+
+DeletePath( folder_root + "/" )
+DeletePath( folder_root + "/attachments/" )
+CreatePath( folder_root + "/" )
+
 # get the total number of lines
 total_num_lines = GetNumberOfLines( input_html )
 current_line = 0
@@ -439,9 +416,14 @@ current_line = 0
 #print("WARNING: DO NOT DO ANYTHING. This mass file re-write will slow down the system to a crawl just due to the amount of shit it has to do")
 print("Starting rewrite of HTML file with offline paths and downloading the file as well.")
 
-log_file_name = input_html.strip( "html" ) + "log"
+log_file_name = input_html.rsplit( ".html", 1 )[0] + ".log"
 
-input_html_file = input_html.rsplit( "\\", 1 )[1]
+try:
+    # not in the current directory
+    input_html_file = input_html.rsplit( "\\", 1 )[1]
+except:
+    # in the current directory
+    input_html_file = input_html
 
 # set to file
 with open( input_html, 'r', encoding="utf8" ) as HTMLFileIn:
@@ -456,13 +438,15 @@ with open( input_html, 'r', encoding="utf8" ) as HTMLFileIn:
                 percent = ( current_line / total_num_lines ) * 100
                 percent = round( percent, 3 )
 
-                # update the current line and the percentage in the title (windows only atm)
-                ctypes.windll.kernel32.SetConsoleTitleW("Demez Awful HTML File Archiver - File: '" + input_html_file + "' - Line: " + str(current_line) + " / " + str(total_num_lines) + " - " + str(percent) + "%" )
+                # update the current line and the percentage in the title (add a linux option and move this to a seperate function next time you use this)
+                if os.name == "nt":
+                    ctypes.windll.kernel32.SetConsoleTitleW("Demez Awful HTML File Archiver - File: '" + input_html_file + "' - Line: " + str(current_line) + " / " + str(total_num_lines) + " - " + str(percent) + "%" )
 
                 # only to remove all the extra lines in the file lmao
                 if line == "\n":
                     continue
 
+                # search for src= or href=, since those can only contain a url we can download
                 containerFound = FindURLContainer( line )
 
                 if containerFound != False:
@@ -474,16 +458,20 @@ with open( input_html, 'r', encoding="utf8" ) as HTMLFileIn:
                     folder = GetFolderPath( url )
                     filename = GetFileName( url, containerFound, folder, dupURL )
                     
-                    # there is no file in the url
+                    # there is a file at the end of the url
                     if filename != None:
                         
                         if dupURL == False:
+                            # we haven't seen this url before, so download it
                             download_result = DownloadFile( url, folder, filename, log_file )
-                        
-                            if download_result == True: # download succeeded
+                            
+                            # download succeeded
+                            if download_result == True: 
+                                # replace it with the changed filename
                                 line = ReplaceFileDirectory( line, url, folder + filename )
                         
                         else:
+                            # we have seen this url before, so don't change the filename and replace it
                             line = ReplaceFileDirectory( line, url, folder + filename )
 
                 HTMLFileOut.write( line )
